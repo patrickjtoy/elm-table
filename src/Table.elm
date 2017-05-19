@@ -1,4 +1,14 @@
-module Table exposing (Column, Fixed(..), State, Msg, inititialState, update, view)
+module Table exposing (Column, Fixed(Right, Left, None), State, Msg, inititialState, update, view)
+
+{-| This module provides a feature-rich and semantic table for Elm apps. It is currently under development and should NOT be used.
+
+# Types and Aliases
+@docs Column, Fixed, State, Msg
+
+# Functions
+@docs inititialState, update, view
+
+-}
 
 import Dict exposing (..)
 import Dom exposing (..)
@@ -19,6 +29,8 @@ type alias PopoverState =
     }
 
 
+{-| Holds the internal Table state. You need to hold this state in your application's model.
+-}
 type alias State a =
     { scrollPos : Point
     , sorter : Dict String SortDirection
@@ -27,6 +39,8 @@ type alias State a =
     }
 
 
+{-| Creates the initial state for a Table.
+-}
 inititialState : State a
 inititialState =
     { scrollPos = ( 0, 0 )
@@ -40,6 +54,9 @@ inititialState =
 -- UPDATE --
 
 
+{-| Messages used internally by the Table module. You need to map the return from the view function to a message in your app and pass the
+received sub-message to the Table module's update function. See the example including with the view function below.
+-}
 type Msg a
     = SetScrollPos Point
     | SortData String (a -> a -> Order) SortDirection
@@ -56,6 +73,10 @@ type alias Update a msg =
     }
 
 
+{-| Handles the messages defined above. This function must be called from your application's update function with the Table.Msg, the
+original data set, the current data set (stored in your model), the current Table.State (stored in your model), and your application's
+NoOp Msg.
+-}
 update : Msg a -> List a -> List a -> State a -> msg -> Update a msg
 update msg originalData currentData state noOpMsg =
     let
@@ -126,6 +147,8 @@ update msg originalData currentData state noOpMsg =
 -- VIEW --
 
 
+{-| Provides types for fixed columns. This feature is not yet implemented.
+-}
 type Fixed
     = Right
     | Left
@@ -155,6 +178,8 @@ type alias Sorting a =
     }
 
 
+{-| The shape of a column for a particular set of data. See the examples provided within this repository for usage details.
+-}
 type alias Column a =
     { id : String
     , fixed : Fixed
@@ -411,6 +436,9 @@ scroll data columns classPrefix state =
         ]
 
 
+{-| The entry point for the Table module. You will need to call this from your application's view function. See the examples provided
+within this repository for usage details.
+-}
 view : Props a -> State a -> Html (Msg a)
 view { columns, data, classPrefix, isScrollable } state =
     Html.div
