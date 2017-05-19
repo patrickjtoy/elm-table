@@ -1,4 +1,4 @@
-module Table exposing (Column, Fixed(Right, Left, None), State, Msg, inititialState, update, view)
+module Table exposing (Column, Fixed(Right, Left, None), State, Msg, initialState, update, view)
 
 {-| This module provides a feature-rich and semantic table for Elm apps. It is currently under development and should NOT be used.
 
@@ -6,7 +6,7 @@ module Table exposing (Column, Fixed(Right, Left, None), State, Msg, inititialSt
 @docs Column, Fixed, State, Msg
 
 # Functions
-@docs inititialState, update, view
+@docs initialState, update, view
 
 -}
 
@@ -21,6 +21,16 @@ import Json.Encode as Encode
 
 
 -- MODEL --
+
+
+type alias Point =
+    ( Int, Int )
+
+
+type SortDirection
+    = Asc
+    | Desc
+    | Unsorted
 
 
 type alias PopoverState =
@@ -41,8 +51,8 @@ type alias State a =
 
 {-| Creates the initial state for a Table.
 -}
-inititialState : State a
-inititialState =
+initialState : State a
+initialState =
     { scrollPos = ( 0, 0 )
     , sorter = Dict.empty
     , popovers = Dict.empty
@@ -66,81 +76,98 @@ type Msg a
     | NoOp
 
 
-type alias Update a msg =
+type alias Result a msg =
     { data : List a
     , state : State a
     , command : Maybe (Cmd msg)
     }
 
 
+closePopovers : Dict String PopoverState -> Dict String PopoverState
+closePopovers popovers =
+    Dict.map (\_ filter -> { filter | visible = False }) popovers
+
+
+sortData : (a -> a -> Order) -> SortDirection -> List a -> List a -> List a
+sortData sorter direction originalData currentData =
+    case direction of
+        Unsorted ->
+            List.filter ((flip List.member) currentData) originalData
+
+        Asc ->
+            List.sortWith sorter (currentData)
+
+        Desc ->
+            List.sortWith sorter (currentData)
+                |> List.reverse
+
+
+filterData : Dict String (a -> Bool) -> a -> Bool
+filterData filters datum =
+    List.all (\filter -> filter datum) (Dict.values filters)
+
+
+activeFilters : String -> String -> (a -> String) -> Dict String (a -> Bool) -> Dict String (a -> Bool)
+activeFilters id text accessor filters =
+    if String.isEmpty text then
+        Dict.remove id filters
+    else
+        Dict.insert id (\datum -> String.contains text (accessor datum)) filters
+
+
+nextPopovers : String -> Bool -> Point -> Dict String PopoverState -> Dict String PopoverState
+nextPopovers id visible point currentPopovers =
+    Dict.map (\_ popover -> { popover | visible = False }) currentPopovers
+        |> Dict.insert id (PopoverState visible point)
+
+
 {-| Handles the messages defined above. This function must be called from your application's update function with the Table.Msg, the
 original data set, the current data set (stored in your model), the current Table.State (stored in your model), and your application's
 NoOp Msg.
 -}
-update : Msg a -> List a -> List a -> State a -> msg -> Update a msg
+update : Msg a -> List a -> List a -> State a -> msg -> Result a msg
 update msg originalData currentData state noOpMsg =
-    let
-        closeAll : Dict String PopoverState
-        closeAll =
-            Dict.map (\_ filter -> { filter | visible = False }) state.popovers
-    in
-        case msg of
-            SetScrollPos position ->
-                Update currentData { state | scrollPos = position, popovers = closeAll } Maybe.Nothing
+    case msg of
+        SetScrollPos position ->
+            { data = currentData
+            , state = { state | scrollPos = position, popovers = (closePopovers state.popovers) }
+            , command = Maybe.Nothing
+            }
 
-            SortData id sorter direction ->
-                let
-                    sortedData =
-                        case direction of
-                            Unsorted ->
-                                List.filter ((flip List.member) currentData) originalData
+        SortData id sorter direction ->
+            { data = (sortData sorter direction originalData currentData)
+            , state = { state | sorter = Dict.singleton id direction }
+            , command = Maybe.Nothing
+            }
 
-                            Asc ->
-                                List.sortWith sorter (currentData)
+        ClosePopovers ->
+            { data = currentData
+            , state = { state | popovers = closePopovers state.popovers }
+            , command = Maybe.Nothing
+            }
 
-                            Desc ->
-                                List.sortWith sorter (currentData)
-                                    |> List.reverse
-                in
-                    Update sortedData { state | sorter = Dict.singleton id direction } Maybe.Nothing
+        SetVisiblePopover id node visible point ->
+            let
+                task =
+                    Task.attempt (\_ -> noOpMsg) (Dom.focus node)
+            in
+                { data = currentData
+                , state = { state | popovers = nextPopovers id visible point state.popovers }
+                , command = Maybe.Just task
+                }
 
-            ClosePopovers ->
-                Update currentData { state | popovers = closeAll } Maybe.Nothing
+        FilterData id accessor text ->
+            let
+                nextFilters =
+                    activeFilters id text accessor state.filters
+            in
+                { data = (List.filter (filterData nextFilters) originalData)
+                , state = { state | filters = nextFilters }
+                , command = Maybe.Nothing
+                }
 
-            SetVisiblePopover id node visible point ->
-                let
-                    popovers =
-                        Dict.map (\_ popover -> { popover | visible = False }) state.popovers
-                            |> Dict.insert id (PopoverState visible point)
-
-                    task =
-                        Task.attempt (\_ -> noOpMsg) (Dom.focus node)
-                in
-                    Update currentData { state | popovers = popovers } (Maybe.Just task)
-
-            FilterData id accessor text ->
-                let
-                    filterData : Dict String (a -> Bool) -> a -> Bool
-                    filterData filters datum =
-                        List.all (\filter -> filter datum) (Dict.values filters)
-                in
-                    if String.isEmpty text then
-                        let
-                            activeFilters : Dict String (a -> Bool)
-                            activeFilters =
-                                Dict.remove id state.filters
-                        in
-                            Update (List.filter (filterData activeFilters) originalData) { state | filters = activeFilters } Maybe.Nothing
-                    else
-                        let
-                            activeFilters : Dict String (a -> Bool)
-                            activeFilters =
-                                Dict.insert id (\datum -> String.contains text (accessor datum)) state.filters
-                        in
-                            Update (List.filter (filterData activeFilters) originalData) { state | filters = activeFilters } Maybe.Nothing
-
-            NoOp ->
-                Update currentData state Maybe.Nothing
+        NoOp ->
+            Result currentData state Maybe.Nothing
 
 
 
@@ -153,16 +180,6 @@ type Fixed
     = Right
     | Left
     | None
-
-
-type SortDirection
-    = Asc
-    | Desc
-    | Unsorted
-
-
-type alias Point =
-    ( Int, Int )
 
 
 type alias Filtering a =
