@@ -94,66 +94,10 @@ sorter prop x y =
 
 columns : List (Table.Column Person)
 columns =
-    [ { id = "name"
-      , fixed = Table.None
-      , sorting =
-            { sortable = False
-            , sorter = sorter .name
-            }
-      , filtering =
-            { filterable = False
-            , accessor = .name
-            , label = "Find Name"
-            }
-      , header = render "Name"
-      , body = .name >> render
-      , footer = (\_ -> "--") >> render
-      }
-    , { id = "year"
-      , fixed = Table.None
-      , sorting =
-            { sortable = False
-            , sorter = sorter .year
-            }
-      , filtering =
-            { filterable = False
-            , accessor = .year >> toString
-            , label = "Find Year"
-            }
-      , header = render "Year"
-      , body = .year >> toString >> render
-      , footer = (\_ -> "--") >> render
-      }
-    , { id = "city"
-      , fixed = Table.None
-      , sorting =
-            { sortable = False
-            , sorter = sorter .city
-            }
-      , filtering =
-            { filterable = False
-            , accessor = .city
-            , label = "Find City"
-            }
-      , header = render "City"
-      , body = .city >> render
-      , footer = (\_ -> "--") >> render
-      }
-    , { id = "state"
-      , fixed = Table.None
-      , sorting =
-            { sortable = False
-            , sorter = sorter .state
-            }
-      , filtering =
-            { filterable = False
-            , accessor = .state
-            , label = "Find State"
-            }
-      , header = render "State"
-      , body = .state >> render
-      , footer = (\_ -> "--") >> render
-      }
+    [ Table.defaultColumn "name" (.name >> render)
+    , Table.defaultColumn "year" (.year >> toString >> render)
+    , Table.defaultColumn "city" (.city >> render)
+    , Table.defaultColumn "state" (.state >> render)
     ]
 
 

@@ -1,4 +1,4 @@
-module Table exposing (Column, Fixed(Right, Left, None), State, Msg, initialState, update, view)
+module Table exposing (Column, Fixed(Right, Left, None), State, Msg, initialState, defaultColumn, update, view)
 
 {-| This module provides a feature-rich and semantic table for Elm apps. It is currently under development and should NOT be used.
 
@@ -6,7 +6,7 @@ module Table exposing (Column, Fixed(Right, Left, None), State, Msg, initialStat
 @docs Column, Fixed, State, Msg
 
 # Functions
-@docs initialState, update, view
+@docs initialState, defaultColumn, update, view
 
 -}
 
@@ -41,17 +41,17 @@ type alias PopoverState =
 
 {-| Holds the internal Table state. You need to hold this state in your application's model.
 -}
-type alias State a =
+type alias State datum =
     { scrollPos : Point
     , sorter : Dict String SortDirection
     , popovers : Dict String PopoverState
-    , filters : Dict String (a -> Bool)
+    , filters : Dict String (datum -> Bool)
     }
 
 
 {-| Creates the initial state for a Table.
 -}
-initialState : State a
+initialState : State datum
 initialState =
     { scrollPos = ( 0, 0 )
     , sorter = Dict.empty
@@ -67,18 +67,18 @@ initialState =
 {-| Messages used internally by the Table module. You need to map the return from the view function to a message in your app and pass the
 received sub-message to the Table module's update function. See the example including with the view function below.
 -}
-type Msg a
+type Msg datum
     = SetScrollPos Point
-    | SortData String (a -> a -> Order) SortDirection
+    | SortData String (datum -> datum -> Order) SortDirection
     | ClosePopovers
     | SetVisiblePopover String String Bool Point
-    | FilterData String (a -> String) String
+    | FilterData String (datum -> String) String
     | NoOp
 
 
-type alias Result a msg =
-    { data : List a
-    , state : State a
+type alias Result datum msg =
+    { data : List datum
+    , state : State datum
     , command : Maybe (Cmd msg)
     }
 
@@ -88,7 +88,7 @@ closePopovers popovers =
     Dict.map (\_ filter -> { filter | visible = False }) popovers
 
 
-sortData : (a -> a -> Order) -> SortDirection -> List a -> List a -> List a
+sortData : (datum -> datum -> Order) -> SortDirection -> List datum -> List datum -> List datum
 sortData sorter direction originalData currentData =
     case direction of
         Unsorted ->
@@ -107,8 +107,8 @@ filterData filters datum =
     List.all (\filter -> filter datum) (Dict.values filters)
 
 
-activeFilters : String -> String -> (a -> String) -> Dict String (a -> Bool) -> Dict String (a -> Bool)
-activeFilters id text accessor filters =
+nextFilters : String -> String -> (a -> String) -> Dict String (a -> Bool) -> Dict String (a -> Bool)
+nextFilters id text accessor filters =
     if String.isEmpty text then
         Dict.remove id filters
     else
@@ -125,12 +125,16 @@ nextPopovers id visible point currentPopovers =
 original data set, the current data set (stored in your model), the current Table.State (stored in your model), and your application's
 NoOp Msg.
 -}
-update : Msg a -> List a -> List a -> State a -> msg -> Result a msg
+update : Msg datum -> List datum -> List datum -> State datum -> msg -> Result datum msg
 update msg originalData currentData state noOpMsg =
     case msg of
         SetScrollPos position ->
             { data = currentData
-            , state = { state | scrollPos = position, popovers = (closePopovers state.popovers) }
+            , state =
+                { state
+                    | scrollPos = position
+                    , popovers = (closePopovers state.popovers)
+                }
             , command = Maybe.Nothing
             }
 
@@ -148,6 +152,7 @@ update msg originalData currentData state noOpMsg =
 
         SetVisiblePopover id node visible point ->
             let
+                task : Cmd msg
                 task =
                     Task.attempt (\_ -> noOpMsg) (Dom.focus node)
             in
@@ -158,11 +163,12 @@ update msg originalData currentData state noOpMsg =
 
         FilterData id accessor text ->
             let
-                nextFilters =
-                    activeFilters id text accessor state.filters
+                activeFilters : Dict String (datum -> Bool)
+                activeFilters =
+                    nextFilters id text accessor state.filters
             in
-                { data = (List.filter (filterData nextFilters) originalData)
-                , state = { state | filters = nextFilters }
+                { data = (List.filter (filterData activeFilters) originalData)
+                , state = { state | filters = activeFilters }
                 , command = Maybe.Nothing
                 }
 
@@ -182,41 +188,68 @@ type Fixed
     | None
 
 
-type alias Filtering a =
-    { filterable : Bool
-    , accessor : a -> String
+type alias Filtering datum =
+    { accessor : datum -> String
     , label : String
-    }
-
-
-type alias Sorting a =
-    { sortable : Bool
-    , sorter : a -> a -> Order
     }
 
 
 {-| The shape of a column for a particular set of data. See the examples provided within this repository for usage details.
 -}
-type alias Column a =
+type alias Column datum =
     { id : String
-    , fixed : Fixed
-    , sorting : Sorting a
-    , filtering : Filtering a
-    , header : Html (Msg a)
-    , body : a -> Html (Msg a)
-    , footer : List a -> Html (Msg a)
+    , bodyCell : datum -> String
+    , fixed : Maybe Fixed
+    , sorting : Maybe (datum -> datum -> Order)
+    , filtering : Maybe (Filtering datum)
+    , headerCell : Maybe String
+    , footerCell : Maybe (List datum -> String)
     }
 
 
-type alias Props a =
-    { columns : List (Column a)
-    , data : List a
+{-| Used to quickly create a basic Column with no frills
+-}
+defaultColumn : String -> (datum -> String) -> Column datum
+defaultColumn id bodyCell =
+    { id = id
+    , bodyCell = bodyCell
+    , fixed = Maybe.Nothing
+    , sorting = Maybe.Nothing
+    , filtering = Maybe.Nothing
+    , headerCell = Maybe.Nothing
+    , footerCell = Maybe.Nothing
+    }
+
+
+type alias Config datum =
+    { columns : List (Column datum)
+    , data : List datum
     , classPrefix : String
     , isScrollable : Bool
     }
 
 
-onScroll : (Point -> Msg a) -> Html.Attribute (Msg a)
+isJust : Maybe a -> Bool
+isJust m =
+    case m of
+        Nothing ->
+            False
+
+        Just _ ->
+            True
+
+
+emptyNode : Html (Msg datum)
+emptyNode =
+    Html.span [] []
+
+
+ignoreClick : Html.Attribute (Msg datum)
+ignoreClick =
+    Html.Events.onWithOptions "click" { stopPropagation = True, preventDefault = False } (Decode.succeed NoOp)
+
+
+onScroll : (Point -> Msg datum) -> Html.Attribute (Msg datum)
 onScroll tagger =
     Html.Events.on "scroll" (Decode.map tagger scrollPointParser)
 
@@ -228,7 +261,7 @@ scrollPointParser =
         (Decode.at [ "target", "scrollTop" ] Decode.int)
 
 
-colgroup : List (Column a) -> String -> Html (Msg a)
+colgroup : List (Column datum) -> String -> Html (Msg datum)
 colgroup columns classPrefix =
     Html.colgroup [ Html.Attributes.class (classPrefix ++ "-table-colgroup") ]
         (List.map
@@ -241,38 +274,33 @@ colgroup columns classPrefix =
         )
 
 
-popover : String -> (a -> String) -> String -> PopoverState -> String -> Html (Msg a)
-popover id accessor label popoverState classPrefix =
-    let
-        ignoreClick : Html.Attribute (Msg a)
-        ignoreClick =
-            Html.Events.onWithOptions "click" { stopPropagation = True, preventDefault = False } (Decode.succeed NoOp)
-    in
-        Html.div
-            [ Html.Attributes.classList
-                [ ( classPrefix ++ "-table-filter-popover", True )
-                , ( classPrefix ++ "-table-filter-popover__visible", popoverState.visible )
-                ]
-            , Html.Attributes.style
-                [ ( "left", toString ((Tuple.first popoverState.position)) ++ "px" )
-                , ( "top", toString ((Tuple.second popoverState.position)) ++ "px" )
-                ]
+popover : String -> (String -> Msg datum) -> String -> PopoverState -> String -> Html (Msg datum)
+popover id inputMsg label popoverState classPrefix =
+    Html.div
+        [ Html.Attributes.classList
+            [ ( classPrefix ++ "-table-filter-popover", True )
+            , ( classPrefix ++ "-table-filter-popover__visible", popoverState.visible )
+            ]
+        , Html.Attributes.style
+            [ ( "left", toString ((Tuple.first popoverState.position)) ++ "px" )
+            , ( "top", toString ((Tuple.second popoverState.position)) ++ "px" )
+            ]
+        , ignoreClick
+        ]
+        [ Html.label [ Html.Attributes.class (classPrefix ++ "-table-filter-popover-label") ] [ text label ]
+        , Html.input
+            [ Html.Attributes.type_ "text"
+            , Html.Attributes.id (id ++ "-popover-input")
+            , Html.Attributes.class (classPrefix ++ "-table-filter-popover-input")
             , ignoreClick
+            , Html.Events.onInput inputMsg
             ]
-            [ Html.label [ Html.Attributes.class (classPrefix ++ "-table-filter-popover-label") ] [ text label ]
-            , Html.input
-                [ Html.Attributes.type_ "text"
-                , Html.Attributes.id (id ++ "-popover-input")
-                , Html.Attributes.class (classPrefix ++ "-table-filter-popover-input")
-                , ignoreClick
-                , Html.Events.onInput (FilterData id accessor)
-                ]
-                []
-            ]
+            []
+        ]
 
 
-filterIcon : String -> (a -> String) -> String -> Dict String PopoverState -> String -> Html (Msg a)
-filterIcon id accessor label filters classPrefix =
+filterIcon : String -> String -> Filtering datum -> Dict String PopoverState -> Html (Msg datum)
+filterIcon id classPrefix filtering currentFilters =
     let
         decoder : String -> Decode.Decoder Int
         decoder prop =
@@ -284,13 +312,13 @@ filterIcon id accessor label filters classPrefix =
                 (decoder "offsetLeft")
                 (decoder "offsetTop")
 
-        onClick : (Point -> Msg a) -> Html.Attribute (Msg a)
+        onClick : (Point -> Msg datum) -> Html.Attribute (Msg datum)
         onClick tagger =
             Html.Events.onWithOptions "click" { stopPropagation = True, preventDefault = False } (Decode.map tagger parser)
 
         popoverState : PopoverState
         popoverState =
-            Dict.get id filters |> Maybe.withDefault (PopoverState False ( 0, 0 ))
+            Dict.get id currentFilters |> Maybe.withDefault (PopoverState False ( 0, 0 ))
     in
         Html.div [ Html.Attributes.class (classPrefix ++ "-table-filter") ]
             [ Html.span []
@@ -306,11 +334,11 @@ filterIcon id accessor label filters classPrefix =
                     ]
                     []
                 ]
-            , popover id accessor label popoverState classPrefix
+            , popover id (FilterData id filtering.accessor) filtering.label popoverState classPrefix
             ]
 
 
-sortIcons : String -> Dict String SortDirection -> String -> Html (Msg a)
+sortIcons : String -> Dict String SortDirection -> String -> Html (Msg datum)
 sortIcons id sortState classPrefix =
     let
         isActive : SortDirection -> Bool
@@ -347,83 +375,127 @@ sortIcons id sortState classPrefix =
             ]
 
 
-header : List (Column a) -> State a -> String -> Html (Msg a)
-header columns state classPrefix =
+nextDirection : SortDirection -> SortDirection
+nextDirection direction =
+    case direction of
+        Unsorted ->
+            Asc
+
+        Asc ->
+            Desc
+
+        Desc ->
+            Unsorted
+
+
+directionOrElse : String -> Dict String SortDirection -> SortDirection
+directionOrElse id sorter =
+    Maybe.map nextDirection (Dict.get id sorter)
+        |> Maybe.withDefault Asc
+
+
+headerCell : String -> State datum -> Column datum -> Html (Msg datum)
+headerCell classPrefix state ({ id, sorting, filtering } as column) =
     let
-        nextDirection : SortDirection -> SortDirection
-        nextDirection dir =
-            case dir of
-                Unsorted ->
-                    Asc
-
-                Asc ->
-                    Desc
-
-                Desc ->
-                    Unsorted
-
-        directionOrElse : String -> SortDirection
-        directionOrElse id =
-            Maybe.map nextDirection (Dict.get id state.sorter)
-                |> Maybe.withDefault Asc
-
-        contents : Column a -> Html (Msg a)
-        contents { id, filtering, header, sorting } =
-            Html.th
-                [ Html.Attributes.class (classPrefix ++ "-table-th")
-                , Html.Events.onClick (SortData id sorting.sorter (directionOrElse id))
-                ]
-                [ if filtering.filterable then
-                    filterIcon id filtering.accessor filtering.label state.popovers classPrefix
-                  else
-                    Html.span [] []
-                , header
-                , if sorting.sortable then
-                    sortIcons id state.sorter classPrefix
-                  else
-                    Html.span [] []
-                ]
+        onClickEvent =
+            sorting
+                |> Maybe.map (\f -> SortData id f (directionOrElse id state.sorter))
+                |> Maybe.withDefault NoOp
     in
-        Html.thead [ Html.Attributes.class (classPrefix ++ "-table-thead") ]
-            [ Html.tr [ Html.Attributes.class (classPrefix ++ "-table-tr") ] (List.map contents columns) ]
+        Html.th
+            [ Html.Attributes.class (classPrefix ++ "-table-th")
+            , Html.Events.onClick onClickEvent
+            ]
+            [ filtering
+                |> Maybe.map (\f -> filterIcon id classPrefix f state.popovers)
+                |> Maybe.withDefault emptyNode
+            , column.headerCell |> Maybe.withDefault "" |> text
+            , if isJust sorting then
+                sortIcons id state.sorter classPrefix
+              else
+                emptyNode
+            ]
 
 
-body : List a -> List (Column a) -> String -> Html (Msg a)
-body data columns classPrefix =
+header : List (Column datum) -> String -> State datum -> Html (Msg datum)
+header columns classPrefix state =
+    Html.thead [ Html.Attributes.class (classPrefix ++ "-table-thead") ]
+        [ Html.tr [ Html.Attributes.class (classPrefix ++ "-table-tr") ] (List.map (headerCell classPrefix state) columns) ]
+
+
+body : List (Column datum) -> List datum -> String -> Html (Msg datum)
+body columns data classPrefix =
     Html.tbody [ Html.Attributes.class (classPrefix ++ "-table-tbody") ]
         (List.map
             (\datum ->
                 Html.tr [ Html.Attributes.class (classPrefix ++ "-table-tr") ]
-                    (List.map (\{ body } -> Html.td [ Html.Attributes.class (classPrefix ++ "-table-td") ] [ body datum ]) columns)
+                    (List.map
+                        (\{ bodyCell } ->
+                            Html.td [ Html.Attributes.class (classPrefix ++ "-table-td") ] [ bodyCell datum |> text ]
+                        )
+                        columns
+                    )
             )
             data
         )
 
 
-footer : List a -> List (Column a) -> String -> Html (Msg a)
-footer data columns classPrefix =
-    Html.tfoot [ Html.Attributes.class (classPrefix ++ "-table-tfoot") ]
-        [ Html.tr [ Html.Attributes.class (classPrefix ++ "-table-tr") ]
-            (List.map (\{ footer } -> Html.th [ Html.Attributes.class (classPrefix ++ "-table-tf") ] [ footer data ]) columns)
+footerCell : String -> List datum -> Column datum -> Html (Msg datum)
+footerCell classPrefix data column =
+    Html.th
+        [ Html.Attributes.class (classPrefix ++ "-table-tf") ]
+        [ column.footerCell
+            |> Maybe.map (\f -> f data)
+            |> Maybe.withDefault ""
+            |> text
         ]
 
 
-scroll : List a -> List (Column a) -> String -> State a -> Html (Msg a)
-scroll data columns classPrefix state =
+footer : List (Column datum) -> List datum -> String -> Html (Msg datum)
+footer columns data classPrefix =
+    Html.tfoot [ Html.Attributes.class (classPrefix ++ "-table-tfoot") ]
+        [ Html.tr [ Html.Attributes.class (classPrefix ++ "-table-tr") ]
+            (List.map (footerCell classPrefix data) columns)
+        ]
+
+
+staticTable : List (Column datum) -> List datum -> String -> State datum -> Html (Msg datum)
+staticTable columns data classPrefix state =
+    div [ Html.Attributes.classList [ ( classPrefix ++ "-table-static", True ), ( "table-static", True ) ] ]
+        [ Html.table [ Html.Attributes.class (classPrefix ++ "-table-fixed") ]
+            [ colgroup columns classPrefix
+            , if List.any (.headerCell >> isJust) columns then
+                header columns classPrefix state
+              else
+                emptyNode
+            , body columns data classPrefix
+            , if List.any (.footerCell >> isJust) columns then
+                footer columns data classPrefix
+              else
+                emptyNode
+            ]
+        ]
+
+
+scrollTable : List (Column datum) -> List datum -> String -> State datum -> Html (Msg datum)
+scrollTable columns data classPrefix state =
     div [ Html.Attributes.classList [ ( classPrefix ++ "-table-scroll", True ), ( "table-scroll", True ) ] ]
-        [ div
-            [ Html.Attributes.classList
-                [ ( classPrefix ++ "-table-header", True )
-                , ( "table-header-fixed", True )
+        [ if List.any (.headerCell >> isJust) columns then
+            div
+                [ Html.Attributes.classList
+                    [ ( classPrefix ++ "-table-header", True )
+                    , ( "table-header-fixed", True )
+                    ]
+                , Html.Attributes.property "scrollLeft" (Encode.int (Tuple.first state.scrollPos))
                 ]
-            , Html.Attributes.property "scrollLeft" (Encode.int (Tuple.first state.scrollPos))
-            ]
-            [ Html.table
-                [ Html.Attributes.class (classPrefix ++ "-table-fixed") ]
-                [ colgroup columns classPrefix
-                , header columns state classPrefix
+                [ Html.table
+                    [ Html.Attributes.class (classPrefix ++ "-table-fixed") ]
+                    [ colgroup columns classPrefix
+                    , header columns classPrefix state
+                    ]
                 ]
-            ]
+          else
+            emptyNode
         , div
             [ Html.Attributes.classList
                 [ ( classPrefix ++ "-table-body", True )
@@ -434,45 +506,48 @@ scroll data columns classPrefix state =
             [ Html.table
                 [ Html.Attributes.class (classPrefix ++ "-table-fixed") ]
                 [ colgroup columns classPrefix
-                , body data columns classPrefix
+                , body columns data classPrefix
                 ]
             ]
-        , div
-            [ Html.Attributes.classList
-                [ ( classPrefix ++ "-table-footer", True )
-                , ( "table-footer-fixed", True )
+        , if List.any (.footerCell >> isJust) columns then
+            div
+                [ Html.Attributes.classList
+                    [ ( classPrefix ++ "-table-footer", True )
+                    , ( "table-footer-fixed", True )
+                    ]
+                , Html.Attributes.property "scrollLeft" (Encode.int (Tuple.first state.scrollPos))
                 ]
-            , Html.Attributes.property "scrollLeft" (Encode.int (Tuple.first state.scrollPos))
-            ]
-            [ Html.table
-                [ Html.Attributes.class (classPrefix ++ "-table-fixed") ]
-                [ colgroup columns classPrefix
-                , footer data columns classPrefix
+                [ Html.table
+                    [ Html.Attributes.class (classPrefix ++ "-table-fixed") ]
+                    [ colgroup columns classPrefix
+                    , footer columns data classPrefix
+                    ]
                 ]
-            ]
+          else
+            emptyNode
         ]
 
 
 {-| The entry point for the Table module. You will need to call this from your application's view function. See the examples provided
 within this repository for usage details.
 -}
-view : Props a -> State a -> Html (Msg a)
+view : Config datum -> State datum -> Html (Msg datum)
 view { columns, data, classPrefix, isScrollable } state =
     Html.div
         [ Html.Attributes.class (classPrefix ++ "-table-wrapper")
-        , Html.Events.onClick ClosePopovers
+        , Html.Events.onClick
+            (if List.any (.filtering >> isJust) columns then
+                ClosePopovers
+             else
+                NoOp
+            )
         ]
         [ div [ Html.Attributes.class (classPrefix ++ "-table") ]
             [ div [ Html.Attributes.class (classPrefix ++ "-table-content") ]
                 [ if isScrollable then
-                    scroll data columns classPrefix state
+                    scrollTable columns data classPrefix state
                   else
-                    Html.table []
-                        [ colgroup columns classPrefix
-                        , header columns state classPrefix
-                        , body data columns classPrefix
-                        , footer data columns classPrefix
-                        ]
+                    staticTable columns data classPrefix state
                 ]
             ]
         ]
