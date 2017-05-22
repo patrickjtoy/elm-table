@@ -221,6 +221,36 @@ defaultColumn id bodyCell =
     }
 
 
+withHeaderCell : String -> Column datum -> Column datum
+withHeaderCell headerCell column =
+    { column | headerCell = Maybe.Just headerCell }
+
+
+withFooterCell : (List datum -> String) -> Column datum -> Column datum
+withFooterCell footerCell column =
+    { column | footerCell = Maybe.Just footerCell }
+
+
+withHeaderAndFooterCells : String -> (List datum -> String) -> Column datum -> Column datum
+withHeaderAndFooterCells headerCell footerCell column =
+    (withHeaderCell headerCell column) |> withFooterCell footerCell
+
+
+withSorting : (datum -> datum -> Order) -> Column datum -> Column datum
+withSorting sorting column =
+    { column | sorting = Maybe.Just sorting }
+
+
+withFiltering : Filtering datum -> Column datum -> Column datum
+withFiltering filtering column =
+    { column | filtering = Maybe.Just filtering }
+
+
+withSortingAndFiltering : (datum -> datum -> Order) -> Filtering datum -> Column datum -> Column datum
+withSortingAndFiltering sorting filtering column =
+    (withSorting sorting column) |> withFiltering filtering
+
+
 type alias Config datum =
     { columns : List (Column datum)
     , data : List datum

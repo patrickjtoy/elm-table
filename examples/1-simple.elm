@@ -94,10 +94,10 @@ sorter prop x y =
 
 columns : List (Table.Column Person)
 columns =
-    [ Table.defaultColumn "name" (.name >> render)
-    , Table.defaultColumn "year" (.year >> toString >> render)
-    , Table.defaultColumn "city" (.city >> render)
-    , Table.defaultColumn "state" (.state >> render)
+    [ Table.defaultColumn "name" .name
+    , Table.defaultColumn "year" (.year >> toString)
+    , Table.defaultColumn "city" .city
+    , Table.defaultColumn "state" .state
     ]
 
 
