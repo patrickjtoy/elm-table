@@ -1,5 +1,5 @@
 {
-    "version": "4.0.1",
+    "version": "4.1.0",
     "summary": "A feature-rich semantic table for elm",
     "repository": "https://github.com/patrickjtoy/elm-table.git",
     "license": "BSD3",

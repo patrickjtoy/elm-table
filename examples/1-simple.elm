@@ -94,7 +94,7 @@ sorter prop x y =
 
 columns : List (Table.Column Person)
 columns =
-    [ Table.defaultColumn "name" .name
+    [ Table.defaultColumn "name" .name |> Table.withHeaderCell "Name"
     , Table.defaultColumn "year" (.year >> toString)
     , Table.defaultColumn "city" .city
     , Table.defaultColumn "state" .state

@@ -1,4 +1,20 @@
-module Table exposing (Column, Fixed(Right, Left, None), State, Msg, initialState, defaultColumn, update, view)
+module Table
+    exposing
+        ( Column
+        , Fixed(Right, Left, None)
+        , State
+        , Msg
+        , initialState
+        , defaultColumn
+        , withHeaderCell
+        , withFooterCell
+        , withHeaderAndFooterCells
+        , withSorting
+        , withFiltering
+        , withSortingAndFiltering
+        , update
+        , view
+        )
 
 {-| This module provides a feature-rich and semantic table for Elm apps. It is currently under development and should NOT be used.
 
@@ -6,7 +22,7 @@ module Table exposing (Column, Fixed(Right, Left, None), State, Msg, initialStat
 @docs Column, Fixed, State, Msg
 
 # Functions
-@docs initialState, defaultColumn, update, view
+@docs initialState, defaultColumn, withHeaderCell, withFooterCell, withHeaderAndFooterCells, withSorting, withFiltering, withSortingAndFiltering, update, view
 
 -}
 
@@ -95,10 +111,10 @@ sortData sorter direction originalData currentData =
             List.filter ((flip List.member) currentData) originalData
 
         Asc ->
-            List.sortWith sorter (currentData)
+            List.sortWith sorter currentData
 
         Desc ->
-            List.sortWith sorter (currentData)
+            List.sortWith sorter currentData
                 |> List.reverse
 
 
@@ -208,6 +224,16 @@ type alias Column datum =
 
 
 {-| Used to quickly create a basic Column with no frills
+
+    defaultColumn "name" .name =
+        { id = "name"
+        , bodyCell = "Jane Doe"
+        , fixed = Maybe.Nothing
+        , sorting = Maybe.Nothing
+        , filtering = Maybe.Nothing
+        , headerCell = Maybe.Nothing
+        , footerCell = Maybe.Nothing
+        }
 -}
 defaultColumn : String -> (datum -> String) -> Column datum
 defaultColumn id bodyCell =
@@ -221,31 +247,103 @@ defaultColumn id bodyCell =
     }
 
 
+{-| Adds a headerCell to a Column
+
+    defaultColumn "name" .name |> withHeaderCell "Name" =
+        { id = "name"
+        , bodyCell = "Jane Doe"
+        , fixed = Maybe.Nothing
+        , sorting = Maybe.Nothing
+        , filtering = Maybe.Nothing
+        , headerCell = Maybe.Just "Name"
+        , footerCell = Maybe.Nothing
+        }
+-}
 withHeaderCell : String -> Column datum -> Column datum
 withHeaderCell headerCell column =
     { column | headerCell = Maybe.Just headerCell }
 
 
+{-| Adds a footerCell to a Column
+
+    defaultColumn "name" .name |> withFooterCell (List.sum >> toString) =
+        { id = "name"
+        , bodyCell = "Jane Doe"
+        , fixed = Maybe.Nothing
+        , sorting = Maybe.Nothing
+        , filtering = Maybe.Nothing
+        , headerCell = Maybe.Nothing
+        , footerCell = Maybe.Just "42"
+        }
+-}
 withFooterCell : (List datum -> String) -> Column datum -> Column datum
 withFooterCell footerCell column =
     { column | footerCell = Maybe.Just footerCell }
 
 
+{-| Adds a headerCell and footerCell to a Column
+
+    defaultColumn "name" .name |> withHeaderAndFooterCells "Name" (List.sum >> toString) =
+        { id = "name"
+        , bodyCell = "Jane Doe"
+        , fixed = Maybe.Nothing
+        , sorting = Maybe.Nothing
+        , filtering = Maybe.Nothing
+        , headerCell = Maybe.Just "Name"
+        , footerCell = Maybe.Just "42"
+        }
+-}
 withHeaderAndFooterCells : String -> (List datum -> String) -> Column datum -> Column datum
 withHeaderAndFooterCells headerCell footerCell column =
     (withHeaderCell headerCell column) |> withFooterCell footerCell
 
 
+{-| Adds sorting to a Column
+
+    defaultColumn "name" .name |> withSorting (\x y -> compare x.name y.name) =
+        { id = "name"
+        , bodyCell = "Jane Doe"
+        , fixed = Maybe.Nothing
+        , sorting = Maybe.Just (\x y -> compare x.name y.name)
+        , filtering = Maybe.Nothing
+        , headerCell = Maybe.Nothing
+        , footerCell = Maybe.Nothing
+        }
+-}
 withSorting : (datum -> datum -> Order) -> Column datum -> Column datum
 withSorting sorting column =
     { column | sorting = Maybe.Just sorting }
 
 
+{-| Adds filtering to a Column
+
+    defaultColumn "name" .name |> withFiltering { accessor = .name, label = "Find Name" } =
+        { id = "name"
+        , bodyCell = "Jane Doe"
+        , fixed = Maybe.Nothing
+        , sorting = Maybe.Nothing
+        , filtering = Maybe.Just { accessor = .name, label = "Find Name" }
+        , headerCell = Maybe.Nothing
+        , footerCell = Maybe.Nothing
+        }
+-}
 withFiltering : Filtering datum -> Column datum -> Column datum
 withFiltering filtering column =
     { column | filtering = Maybe.Just filtering }
 
 
+{-| Adds sorting and filtering to a Column
+
+    defaultColumn "name" .name |> withSortingAndFiltering (\x y -> compare x.name y.name) { accessor = .name, label = "Find Name" } =
+        { id = "name"
+        , bodyCell = "Jane Doe"
+        , fixed = Maybe.Nothing
+        , sorting = Maybe.Just (\x y -> compare x.name y.name)
+        , filtering = Maybe.Just { accessor = .name, label = "Find Name" }
+        , headerCell = Maybe.Nothing
+        , footerCell = Maybe.Nothing
+        }
+-}
 withSortingAndFiltering : (datum -> datum -> Order) -> Filtering datum -> Column datum -> Column datum
 withSortingAndFiltering sorting filtering column =
     (withSorting sorting column) |> withFiltering filtering
